@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Motion Stabilizer Pro</title>
+    <style>
+        /* ===== RESET & BASE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #00e5ff;
+            --secondary: #7c4dff;
+            --dark: #0a0e17;
+            --dark2: #131a2b;
+            --dark3: #1a2340;
+            --success: #00e676;
+            --danger: #ff1744;
+            --warning: #ffab00;
+            --text: #e0e6f0;
+            --text-dim: #7889a5;
+            --glass: rgba(19, 26, 43, 0.85);
+            --glass-border: rgba(0, 229, 255, 0.15);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--dark);
+            color: var(--text);
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* ===== MAIN CONTAINER ===== */
+        .app-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ===== CAMERA VIEW ===== */
+        .camera-wrapper {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #cameraVideo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            min-width: 100%;
+            min-height: 100%;
+            transform: translate(-50%, -50%);
+            object-fit: cover;
+            transition: none;
+        }
+
+        #cameraVideo.stabilized {
+            /* Overscale slightly to allow stabilization movement without showing edges */
+            min-width: 110%;
+            min-height: 110%;
+        }
+
+        .camera-placeholder {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--dark), var(--dark2));
+            gap: 20px;
+        }
+
+        .camera-placeholder svg {
+            width: 80px;
+            height: 80px;
+            opacity: 0.3;
+        }
+
+        .camera-placeholder p {
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+
+        /* ===== STABILIZED TEXT OVERLAY ===== */
+        .stabilized-text-layer {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .stabilized-text {
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 2px 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.5);
+            text-align: center;
+            padding: 20px;
+            line-height: 1.4;
+            transition: none;
+            will-change: transform;
+            max-width: 90%;
+        }
+
+        .stabilized-text.subtitle {
+            font-size: 16px;
+            font-weight: 400;
+            margin-top: 8px;
+            opacity: 0.85;
+        }
+
+        /* ===== TOP BAR ===== */
+        .top-bar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            z-index: 100;
+            padding: 12px 16px;
+            padding-top: max(12px, env(safe-area-inset-top));
+            background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .app-title {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.active {
+            background: rgba(0, 230, 118, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(0, 230, 118, 0.3);
+        }
+
+        .status-badge.inactive {
+            background: rgba(255, 23, 68, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(255, 23, 68, 0.3);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* ===== MOTION VISUALIZER ===== */
+        .motion-viz {
+            position: absolute;
+            top: 70px;
+            right: 16px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .viz-canvas-container {
+            width: 100px;
+            height: 100px;
+            border-radius: var(--radius-sm);
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+
+        #motionCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .data-pills {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .data-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 12px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            font-size: 10px;
+            font-family: 'Courier New', monospace;
+            white-space: nowrap;
+        }
+
+        .pill-label {
+            color: var(--text-dim);
+            width: 16px;
+        }
+
+        .pill-value {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .pill-bar {
+            width: 30px;
+            height: 3px;
+            border-radius: 2px;
+            background: var(--dark3);
+            overflow: hidden;
+        }
+
+        .pill-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.1s;
+            background: var(--primary);
+        }
+
+        /* ===== BOTTOM CONTROLS ===== */
+        .bottom-controls {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            z-index: 100;
+            padding: 16px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.4), transparent);
+        }
+
+        /* Stabilization Strength */
+        .stab-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .stab-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+
+        .stab-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--dark3);
+            outline: none;
+        }
+
+        .stab-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+        }
+
+        .stab-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+        }
+
+        .stab-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--primary);
+            min-width: 36px;
+            text-align: right;
+        }
+
+        /* Button Row */
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: inherit;
+        }
+
+        .btn svg {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            flex: 1;
+            max-width: 200px;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.96);
+        }
+
+        .btn-secondary {
+            background: var(--glass);
+            color: var(--text);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .btn-secondary:active {
+            transform: scale(0.96);
+        }
+
+        .btn-stab {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-stab.active {
+            background: linear-gradient(135deg, rgba(0,230,118,0.2), rgba(0,230,118,0.1));
+            color: var(--success);
+            border-color: rgba(0,230,118,0.4);
+        }
+
+        .btn-stab.active::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, rgba(0,230,118,0.05), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { opacity: 0; }
+            50% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        /* ===== SETTINGS PANEL ===== */
+        .settings-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 200;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            display: none;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .settings-overlay.open {
+            display: flex;
+        }
+
+        .settings-panel {
+            width: 100%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            background: var(--dark2);
+            border-radius: var(--radius) var(--radius) 0 0;
+            padding: 24px 20px;
+            padding-bottom: max(24px, env(safe-area-inset-bottom));
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .settings-header h2 {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .close-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--dark3);
+            border: none;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .setting-group {
+            margin-bottom: 20px;
+        }
+
+        .setting-group-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            margin-bottom: 12px;
+        }
+
+        .setting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            background: var(--dark3);
+            border-radius: var(--radius-sm);
+            margin-bottom: 8px;
+        }
+
+        .setting-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .setting-name {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .setting-desc {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        /* Toggle Switch */
+        .toggle {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            cursor: pointer;
+        }
+
+        .toggle input {
+            display: none;
+        }
+
+        .toggle-track {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border-radius: 13px;
+            background: var(--dark);
+            transition: background 0.3s;
+        }
+
+        .toggle input:checked + .toggle-track {
+            background: var(--primary);
+        }
+
+        .toggle-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .toggle input:checked ~ .toggle-thumb {
+            transform: translateX(22px);
+        }
+
+        .setting-select {
+            padding: 6px 12px;
+            border-radius: 8px;
+            background: var(--dark);
+            color: var(--text);
+            border: 1px solid var(--glass-border);
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        /* ===== PERMISSION MODAL ===== */
+        .permission-modal {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 300;
+            background: var(--dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .permission-modal.hidden {
+            display: none;
+        }
+
+        .permission-card {
+            text-align: center;
+            max-width: 380px;
+        }
+
+        .permission-icon {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 24px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(0,229,255,0.1), rgba(124,77,255,0.1));
+            border: 2px solid var(--glass-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .permission-icon svg {
+            width: 48px;
+            height: 48px;
+            color: var(--primary);
+        }
+
+        .permission-card h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .permission-card p {
+            color: var(--text-dim);
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+
+        .permission-features {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 32px;
+            text-align: left;
+        }
+
+        .perm-feature {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: var(--dark2);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--glass-border);
+        }
+
+        .perm-feature-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .perm-feature-icon.cam { background: rgba(0,229,255,0.15); color: var(--primary); }
+        .perm-feature-icon.gyro { background: rgba(124,77,255,0.15); color: var(--secondary); }
+        .perm-feature-icon.stab { background: rgba(0,230,118,0.15); color: var(--success); }
+
+        .perm-feature-icon svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .perm-feature-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .perm-feature-text strong {
+            font-size: 13px;
+        }
+
+        .perm-feature-text span {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .btn-start {
+            width: 100%;
+            padding: 16px;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: #fff;
+            border: none;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-family: inherit;
+            transition: transform 0.2s;
+        }
+
+        .btn-start:active {
+            transform: scale(0.97);
+        }
+
+        /* ===== ERROR / INFO TOAST ===== */
+        .toast {
+            position: absolute;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            z-index: 400;
+            padding: 10px 20px;
+            border-radius: var(--radius-sm);
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            font-size: 13px;
+            font-weight: 500;
+            opacity: 0;
+            transition: all 0.3s;
+            pointer-events: none;
+            text-align: center;
+            max-width: 90%;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast.error {
+            border-color: rgba(255,23,68,0.4);
+            color: var(--danger);
+        }
+
+        .toast.success {
+            border-color: rgba(0,230,118,0.4);
+            color: var(--success);
+        }
+
+        .toast.info {
+            border-color: rgba(0,229,255,0.4);
+            color: var(--primary);
+        }
+
+        /* ===== CROSSHAIR ===== */
+        .crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 50;
+            pointer-events: none;
+            opacity: 0.3;
+        }
+
+        .crosshair svg {
+            width: 60px;
+            height: 60px;
+            color: #fff;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (min-width: 768px) {
+            .bottom-controls {
+                padding: 20px 40px;
+            }
+
+            .btn-row {
+                max-width: 600px;
+                margin: 0 auto;
+            }
+
+            .stab-control {
+                max-width: 600px;
+                margin: 0 auto 16px;
+            }
+        }
+
+        /* ===== GRID OVERLAY ===== */
+        .grid-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 5;
+            pointer-events: none;
+            display: none;
+        }
+
+        .grid-overlay.show {
+            display: block;
+        }
+
+        .grid-line {
+            position: absolute;
+            background: rgba(255,255,255,0.15);
+        }
+
+        .grid-line.h {
+            left: 0; right: 0;
+            height: 1px;
+        }
+
+        .grid-line.v {
+            top: 0; bottom: 0;
+            width: 1px;
+        }
+
+        .grid-line.h:nth-child(1) { top: 33.33%; }
+        .grid-line.h:nth-child(2) { top: 66.66%; }
+        .grid-line.v:nth-child(3) { left: 33.33%; }
+        .grid-line.v:nth-child(4) { left: 66.66%; }
+
+        /* Horizon indicator */
+        .horizon-indicator {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .horizon-bar {
+            width: 3px;
+            height: 80px;
+            border-radius: 2px;
+            background: var(--dark3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .horizon-fill {
+            position: absolute;
+            bottom: 50%;
+            left: 0;
+            width: 100%;
+            background: var(--primary);
+            border-radius: 2px;
+            transition: height 0.1s, bottom 0.1s;
+        }
+
+        .horizon-label {
+            font-size: 9px;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container" id="app">
+
+    <!-- ===== PERMISSION MODAL ===== -->
+    <div class="permission-modal" id="permissionModal">
+        <div class="permission-card">
+            <div class="permission-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                </svg>
+            </div>
+            <h1>Motion Stabilizer</h1>
+            <p>Advanced real-time camera and text stabilization using your device's motion sensors.</p>
+
+            <div class="permission-features">
+                <div class="perm-feature">
+                    <div class="perm-feature-icon cam">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                            <circle cx="12" cy="13" r="4"/>
+                        </svg>
+                    </div>
+                    <div class="perm-feature-text">
+                        <strong>Camera Access</strong>
+                        <span>Live camera feed with stabilization</span>
+                    </div>
+                </div>
+                <div class="perm-feature">
+                    <div class="perm-feature-icon gyro">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                        </svg>
+                    </div>
+                    <div class="perm-feature-text">
+                        <strong>Gyroscope & Accelerometer</strong>
+                        <span>Detect device shake & motion</span>
+                    </div>
+                </div>
+                <div class="perm-feature">
+                    <div class="perm-feature-icon stab">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                    </div>
+                    <div class="perm-feature-text">
+                        <strong>Real-time Stabilization</strong>
+                        <span>Smooth text & video counter-motion</span>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn-start" id="startBtn" onclick="initApp()">
+                Start Stabilizer
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== CAMERA VIEW ===== -->
+    <div class="camera-wrapper" id="cameraWrapper">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+
+        <div class="camera-placeholder" id="cameraPlaceholder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-dim)">
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+            </svg>
+            <p>Camera initializing...</p>
+        </div>
+
+        <!-- Grid Overlay -->
+        <div class="grid-overlay" id="gridOverlay">
+            <div class="grid-line h"></div>
+            <div class="grid-line h"></div>
+            <div class="grid-line v"></div>
+            <div class="grid-line v"></div>
+        </div>
+
+        <!-- Crosshair -->
+        <div class="crosshair" id="crosshair">
+            <svg viewBox="0 0 60 60" fill="none" stroke="currentColor" stroke-width="1">
+                <circle cx="30" cy="30" r="12" opacity="0.5"/>
+                <line x1="30" y1="4" x2="30" y2="18"/>
+                <line x1="30" y1="42" x2="30" y2="56"/>
+                <line x1="4" y1="30" x2="18" y2="30"/>
+                <line x1="42" y1="30" x2="56" y2="30"/>
+            </svg>
+        </div>
+
+        <!-- Stabilized Text Layer -->
+        <div class="stabilized-text-layer" id="textLayer">
+            <div class="stabilized-text" id="mainText">STABILIZED TEXT</div>
+            <div class="stabilized-text subtitle" id="subText">Motion compensation active</div>
+        </div>
+
+        <!-- Horizon Indicator -->
+        <div class="horizon-indicator" id="horizonIndicator" style="display:none;">
+            <div class="horizon-label" id="horizonDeg">0°</div>
+            <div class="horizon-bar">
+                <div class="horizon-fill" id="horizonFill"></div>
+            </div>
+            <div class="horizon-label">TILT</div>
+        </div>
+    </div>
+
+    <!-- ===== TOP BAR ===== -->
+    <div class="top-bar">
+        <span class="app-title">STABILIZER PRO</span>
+        <div class="status-badge inactive" id="statusBadge">
+            <div class="status-dot"></div>
+            <span id="statusText">OFF</span>
+        </div>
+    </div>
+
+    <!-- ===== MOTION VISUALIZER ===== -->
+    <div class="motion-viz" id="motionViz" style="display:none;">
+        <div class="viz-canvas-container">
+            <canvas id="motionCanvas" width="200" height="200"></canvas>
+        </div>
+        <div class="data-pills">
+            <div class="data-pill">
+                <span class="pill-label">αX</span>
+                <span class="pill-value" id="valAx">0.0</span>
+                <div class="pill-bar"><div class="pill-bar-fill" id="barAx" style="width:0%"></div></div>
+            </div>
+            <div class="data-pill">
+                <span class="pill-label">αY</span>
+                <span class="pill-value" id="valAy">0.0</span>
+                <div class="pill-bar"><div class="pill-bar-fill" id="barAy" style="width:0%"></div></div>
+            </div>
+            <div class="data-pill">
+                <span class="pill-label">αZ</span>
+                <span class="pill-value" id="valAz">0.0</span>
+                <div class="pill-bar"><div class="pill-bar-fill" id="barAz" style="width:0%"></div></div>
+            </div>
+            <div class="data-pill">
+                <span class="pill-label">γ</span>
+                <span class="pill-value" id="valGamma">0.0</span>
+                <div class="pill-bar"><div class="pill-bar-fill" id="barGamma" style="width:0%"></div></div>
+            </div>
+            <div class="data-pill">
+                <span class="pill-label">β</span>
+                <span class="pill-value" id="valBeta">0.0</span>
+                <div class="pill-bar"><div class="pill-bar-fill" id="barBeta" style="width:0%"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== BOTTOM CONTROLS ===== -->
+    <div class="bottom-controls" id="bottomControls" style="display:none;">
+
+        <div class="stab-control">
+            <span class="stab-label">Strength</span>
+            <input type="range" class="stab-slider" id="stabStrength" min="0" max="100" value="75">
+            <span class="stab-value" id="stabValue">75%</span>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-secondary" onclick="toggleSettings()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+                </svg>
+            </button>
+
+            <button class="btn btn-stab btn-secondary" id="stabBtn" onclick="toggleStabilization()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                <span id="stabBtnText">Stabilize</span>
+            </button>
+
+            <button class="btn btn-secondary" onclick="switchCamera()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                    <polyline points="15.5 14 18 11.5 15.5 9"/>
+                    <polyline points="8.5 14 6 11.5 8.5 9"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== SETTINGS PANEL ===== -->
+    <div class="settings-overlay" id="settingsOverlay" onclick="closeSettingsOutside(event)">
+        <div class="settings-panel" onclick="event.stopPropagation()">
+            <div class="settings-header">
+                <h2>⚙️ Settings</h2>
+                <button class="close-btn" onclick="toggleSettings()">✕</button>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-group-title">Stabilization</div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Video Stabilization</div>
+                        <div class="setting-desc">Counter-move camera feed</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setVideoStab" checked onchange="updateSetting('videoStab', this.checked)">
+                        <div class="toggle-track"></div>
+                        <div class="toggle-thumb"></div>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Text Stabilization</div>
+                        <div class="setting-desc">Keep text steady on screen</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setTextStab" checked onchange="updateSetting('textStab', this.checked)">
+                        <div class="toggle-track"></div>
+                        <div class="toggle-thumb"></div>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Algorithm</div>
+                        <div class="setting-desc">Stabilization method</div>
+                    </div>
+                    <select class="setting-select" id="setAlgorithm" onchange="updateSetting('algorithm', this.value)">
+                        <option value="ema">EMA (Smooth)</option>
+                        <option value="kalman" selected>Kalman Filter</option>
+                        <option value="complementary">Complementary</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Smoothing Factor</div>
+                        <div class="setting-desc">Higher = smoother but laggier</div>
+                    </div>
+                    <select class="setting-select" id="setSmoothing" onchange="updateSetting('smoothing', parseFloat(this.value))">
+                        <option value="0.85">Low</option>
+                        <option value="0.92" selected>Medium</option>
+                        <option value="0.96">High</option>
+                        <option value="0.98">Ultra</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-group-title">Display</div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Show Grid</div>
+                        <div class="setting-desc">Rule of thirds overlay</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setGrid" onchange="updateSetting('showGrid', this.checked)">
+                        <div class="toggle-track"></div>
+                        <div class="toggle-thumb"></div>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Show Crosshair</div>
+                        <div class="setting-desc">Center point marker</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setCrosshair" checked onchange="updateSetting('showCrosshair', this.checked)">
+                        <div class="toggle-track"></div>
+                        <div class="toggle-thumb"></div>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Show Horizon</div>
+                        <div class="setting-desc">Tilt level indicator</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setHorizon" onchange="updateSetting('showHorizon', this.checked)">
+                        <div class="toggle-track"></div>
+                        <div class="toggle-thumb"></div>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Overlay Text</div>
+                        <div class="setting-desc">Show stabilized text</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setShowText" checked onchange="updateSetting('showText', this.checked)">
+                        <div class="toggle-track"></div>
+                        <div class="toggle-thumb"></div>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Motion Data</div>
+                        <div class="setting-desc">Show sensor readings</div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setShowData" checked onchange="updateSetting('showData', this.checked)">
+                        <div class="toggle-track"></div>
+                        <div class="toggle-thumb"></div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-group-title">Camera</div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Resolution</div>
+                        <div class="setting-desc">Camera quality setting</div>
+                    </div>
+                    <select class="setting-select" id="setResolution" onchange="updateSetting('resolution', this.value)">
+                        <option value="low">Low (480p)</option>
+                        <option value="medium" selected>Medium (720p)</option>
+                        <option value="high">High (1080p)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting-group-title">Text Settings</div>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Main Text</div>
+                    </div>
+                    <input type="text" id="setMainText" value="STABILIZED TEXT" style="background:var(--dark);color:var(--text);border:1px solid var(--glass-border);border-radius:8px;padding:6px 12px;font-size:13px;font-family:inherit;width:160px;" oninput="updateSetting('mainText', this.value)">
+                </div>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <div class="setting-name">Sub Text</div>
+                    </div>
+                    <input type="text" id="setSubText" value="Motion compensation active" style="background:var(--dark);color:var(--text);border:1px solid var(--glass-border);border-radius:8px;padding:6px 12px;font-size:13px;font-family:inherit;width:160px;" oninput="updateSetting('subText', this.value)">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div class="toast" id="toast"></div>
+
+</div>
+
+<script>
+// =============================================
+// MOTION STABILIZER PRO - Complete Engine
+// =============================================
+
+// === STATE ===
+const state = {
+    cameraActive: false,
+    stabilizationOn: false,
+    facingMode: 'environment',
+    stream: null,
+    motionSupported: false,
+    orientationSupported: false,
+
+    // Raw sensor data
+    accel: { x: 0, y: 0, z: 0 },
+    gyro: { alpha: 0, beta: 0, gamma: 0 },
+    orientation: { alpha: 0, beta: 0, gamma: 0 },
+
+    // Filtered / stabilized values
+    filtered: { x: 0, y: 0, z: 0, alpha: 0, beta: 0, gamma: 0 },
+    kalman: {
+        x: createKalmanFilter(),
+        y: createKalmanFilter(),
+        z: createKalmanFilter(),
+        beta: createKalmanFilter(),
+        gamma: createKalmanFilter()
+    },
+
+    // Motion history for visualization
+    history: [],
+    maxHistory: 60,
+
+    // Settings
+    settings: {
+        videoStab: true,
+        textStab: true,
+        algorithm: 'kalman',
+        smoothing: 0.92,
+        showGrid: false,
+        showCrosshair: true,
+        showHorizon: false,
+        showText: true,
+        showData: true,
+        resolution: 'medium',
+        mainText: 'STABILIZED TEXT',
+        subText: 'Motion compensation active',
+        strength: 75
+    }
+};
+
+// === DOM REFS ===
+const $ = id => document.getElementById(id);
+const video = $('cameraVideo');
+const motionCanvas = $('motionCanvas');
+const ctx = motionCanvas.getContext('2d');
+
+// === KALMAN FILTER ===
+function createKalmanFilter() {
+    return {
+        x: 0,      // state
+        P: 1,      // estimation error covariance
+        Q: 0.01,   // process noise
+        R: 0.1,    // measurement noise
+        K: 0       // Kalman gain
+    };
+}
+
+function kalmanUpdate(kf, measurement) {
+    // Prediction
+    kf.P = kf.P + kf.Q;
+    // Update
+    kf.K = kf.P / (kf.P + kf.R);
+    kf.x = kf.x + kf.K * (measurement - kf.x);
+    kf.P = (1 - kf.K) * kf.P;
+    return kf.x;
+}
+
+// === EMA (Exponential Moving Average) ===
+function emaFilter(prev, current, alpha) {
+    return alpha * prev + (1 - alpha) * current;
+}
+
+// === COMPLEMENTARY FILTER ===
+function complementaryFilter(gyro, accel, alpha) {
+    return alpha * gyro + (1 - alpha) * accel;
+}
+
+// === INIT APP ===
+async function initApp() {
+    const btn = $('startBtn');
+    btn.textContent = 'Initializing...';
+    btn.disabled = true;
+
+    try {
+        // Request motion permissions (iOS 13+)
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            const motionPerm = await DeviceMotionEvent.requestPermission();
+            if (motionPerm !== 'granted') {
+                showToast('Motion permission denied', 'error');
+                btn.textContent = 'Start Stabilizer';
+                btn.disabled = false;
+                return;
+            }
+        }
+
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            const orientPerm = await DeviceOrientationEvent.requestPermission();
+            if (orientPerm !== 'granted') {
+                showToast('Orientation permission denied', 'error');
+            }
+        }
+
+        // Start camera
+        await startCamera();
+
+        // Start motion sensors
+        startMotionSensors();
+
+        // Show UI
+        $('permissionModal').classList.add('hidden');
+        $('bottomControls').style.display = '';
+        $('motionViz').style.display = '';
+
+        // Start render loop
+        requestAnimationFrame(renderLoop);
+
+        showToast('All systems active!', 'success');
+
+    } catch (err) {
+        console.error(err);
+        showToast('Error: ' + err.message, 'error');
+        btn.textContent = 'Retry';
+        btn.disabled = false;
+    }
+}
+
+// === CAMERA ===
+async function startCamera() {
+    if (state.stream) {
+        state.stream.getTracks().forEach(t => t.stop());
+    }
+
+    const resMap = {
+        low: { width: 640, height: 480 },
+        medium: { width: 1280, height: 720 },
+        high: { width: 1920, height: 1080 }
+    };
+
+    const res = resMap[state.settings.resolution] || resMap.medium;
+
+    try {
+        const constraints = {
+            video: {
+                facingMode: state.facingMode,
+                width: { ideal: res.width },
+                height: { ideal: res.height }
+            },
+            audio: false
+        };
+
+        state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = state.stream;
+        await video.play();
+
+        state.cameraActive = true;
+        $('cameraPlaceholder').style.display = 'none';
+
+    } catch (err) {
+        console.warn('Camera error, trying fallback:', err);
+        // Try without resolution constraints
+        try {
+            state.stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: state.facingMode },
+                audio: false
+            });
+            video.srcObject = state.stream;
+            await video.play();
+            state.cameraActive = true;
+            $('cameraPlaceholder').style.display = 'none';
+        } catch (err2) {
+            showToast('Camera not available', 'error');
+            $('cameraPlaceholder').querySelector('p').textContent = 'Camera not available';
+        }
+    }
+}
+
+async function switchCamera() {
+    state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+    await startCamera();
+    showToast(state.facingMode === 'user' ? 'Front camera' : 'Back camera', 'info');
+}
+
+// === MOTION SENSORS ===
+function startMotionSensors() {
+    // DeviceMotion (accelerometer + gyroscope)
+    if (window.DeviceMotionEvent) {
+        window.addEventListener('devicemotion', handleMotion, true);
+        state.motionSupported = true;
+    }
+
+    // DeviceOrientation
+    if (window.DeviceOrientationEvent) {
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        state.orientationSupported = true;
+    }
+
+    // Fallback: simulate with mouse/touch for desktop testing
+    if (!state.motionSupported && !state.orientationSupported) {
+        setupFallbackMotion();
+        showToast('No sensors - using mouse/touch simulation', 'info');
+    }
+}
+
+function handleMotion(e) {
+    const acc = e.accelerationIncludingGravity || e.acceleration;
+    if (acc) {
+        state.accel.x = acc.x || 0;
+        state.accel.y = acc.y || 0;
+        state.accel.z = acc.z || 0;
+    }
+
+    const rot = e.rotationRate;
+    if (rot) {
+        state.gyro.alpha = rot.alpha || 0;
+        state.gyro.beta = rot.beta || 0;
+        state.gyro.gamma = rot.gamma || 0;
+    }
+}
+
+function handleOrientation(e) {
+    state.orientation.alpha = e.alpha || 0;
+    state.orientation.beta = e.beta || 0;
+    state.orientation.gamma = e.gamma || 0;
+}
+
+// Desktop fallback - simulate motion with mouse movement
+function setupFallbackMotion() {
+    let lastX = 0, lastY = 0;
+    let velocityX = 0, velocityY = 0;
+
+    function handleMove(x, y) {
+        velocityX = (x - lastX) * 2;
+        velocityY = (y - lastY) * 2;
+        lastX = x;
+        lastY = y;
+
+        state.accel.x = velocityX;
+        state.accel.y = velocityY;
+        state.accel.z = 0;
+
+        state.orientation.gamma = ((x / window.innerWidth) - 0.5) * 90;
+        state.orientation.beta = ((y / window.innerHeight) - 0.5) * 90;
+
+        state.gyro.gamma = velocityX * 5;
+        state.gyro.beta = velocityY * 5;
+    }
+
+    document.addEventListener('mousemove', e => {
+        handleMove(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('touchmove', e => {
+        const t = e.touches[0];
+        handleMove(t.clientX, t.clientY);
+    }, { passive: true });
+
+    state.motionSupported = true;
+    state.orientationSupported = true;
+}
+
+// === STABILIZATION FILTER ===
+function applyFilter() {
+    const s = state.settings;
+    const algo = s.algorithm;
+    const smooth = s.smoothing;
+
+    if (algo === 'kalman') {
+        state.filtered.x = kalmanUpdate(state.kalman.x, state.accel.x);
+        state.filtered.y = kalmanUpdate(state.kalman.y, state.accel.y);
+        state.filtered.z = kalmanUpdate(state.kalman.z, state.accel.z);
+        state.filtered.beta = kalmanUpdate(state.kalman.beta, state.orientation.beta);
+        state.filtered.gamma = kalmanUpdate(state.kalman.gamma, state.orientation.gamma);
+    } else if (algo === 'ema') {
+        state.filtered.x = emaFilter(state.filtered.x, state.accel.x, smooth);
+        state.filtered.y = emaFilter(state.filtered.y, state.accel.y, smooth);
+        state.filtered.z = emaFilter(state.filtered.z, state.accel.z, smooth);
+        state.filtered.beta = emaFilter(state.filtered.beta, state.orientation.beta, smooth);
+        state.filtered.gamma = emaFilter(state.filtered.gamma, state.orientation.gamma, smooth);
+    } else if (algo === 'complementary') {
+        const alpha = smooth;
+        state.filtered.x = complementaryFilter(state.filtered.x + state.gyro.gamma * 0.016, state.accel.x, alpha);
+        state.filtered.y = complementaryFilter(state.filtered.y + state.gyro.beta * 0.016, state.accel.y, alpha);
+        state.filtered.beta = complementaryFilter(state.filtered.beta + state.gyro.beta * 0.016, state.orientation.beta, alpha);
+        state.filtered.gamma = complementaryFilter(state.filtered.gamma + state.gyro.gamma * 0.016, state.orientation.gamma, alpha);
+    }
+}
+
+// === RENDER LOOP ===
+function renderLoop() {
+    applyFilter();
+
+    const strength = state.settings.strength / 100;
+    const isStab = state.stabilizationOn;
+
+    // === CAMERA STABILIZATION ===
+    if (isStab && state.settings.videoStab) {
+        // Calculate stabilization offset (counter-movement)
+        const maxOffset = 5; // percent
+        const offsetX = -clamp(state.filtered.gamma * 0.15 * strength, -maxOffset, maxOffset);
+        const offsetY = -clamp((state.filtered.beta - 45) * 0.15 * strength, -maxOffset, maxOffset);
+        const rotation = -clamp(state.filtered.gamma * 0.05 * strength, -3, 3);
+
+        video.style.transform = `translate(calc(-50% + ${offsetX}%), calc(-50% + ${offsetY}%)) rotate(${rotation}deg)`;
+        video.classList.add('stabilized');
+    } else {
+        video.style.transform = 'translate(-50%, -50%)';
+        video.classList.remove('stabilized');
+    }
+
+    // === TEXT STABILIZATION ===
+    const mainText = $('mainText');
+    const subText = $('subText');
+
+    if (isStab && state.settings.textStab) {
+        const tOffX = -clamp(state.filtered.gamma * 0.3 * strength, -30, 30);
+        const tOffY = -clamp((state.filtered.beta - 45) * 0.3 * strength, -30, 30);
+        const tRot = -clamp(state.filtered.gamma * 0.08 * strength, -5, 5);
+
+        mainText.style.transform = `translate(${tOffX}px, ${tOffY}px) rotate(${tRot}deg)`;
+        subText.style.transform = `translate(${tOffX * 0.8}px, ${tOffY * 0.8}px) rotate(${tRot * 0.8}deg)`;
+    } else {
+        mainText.style.transform = 'translate(0, 0)';
+        subText.style.transform = 'translate(0, 0)';
+    }
+
+    // === UPDATE DATA DISPLAY ===
+    if (state.settings.showData) {
+        updateDataDisplay();
+    }
+
+    // === MOTION CANVAS ===
+    drawMotionCanvas();
+
+    // === HORIZON ===
+    if (state.settings.showHorizon) {
+        updateHorizon();
+    }
+
+    // === SETTINGS UI SYNC ===
+    updateStatusBadge();
+
+    requestAnimationFrame(renderLoop);
+}
+
+function clamp(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+}
+
+// === DATA DISPLAY UPDATE ===
+function updateDataDisplay() {
+    $('valAx').textContent = state.accel.x.toFixed(1);
+    $('valAy').textContent = state.accel.y.toFixed(1);
+    $('valAz').textContent = state.accel.z.toFixed(1);
+    $('valGamma').textContent = state.orientation.gamma.toFixed(1);
+    $('valBeta').textContent = state.orientation.beta.toFixed(1);
+
+    const maxAccel = 20;
+    $('barAx').style.width = Math.min(100, (Math.abs(state.accel.x) / maxAccel) * 100) + '%';
+    $('barAy').style.width = Math.min(100, (Math.abs(state.accel.y) / maxAccel) * 100) + '%';
+    $('barAz').style.width = Math.min(100, (Math.abs(state.accel.z) / maxAccel) * 100) + '%';
+    $('barGamma').style.width = Math.min(100, (Math.abs(state.orientation.gamma) / 90) * 100) + '%';
+    $('barBeta').style.width = Math.min(100, (Math.abs(state.orientation.beta) / 90) * 100) + '%';
+
+    // Color bars based on intensity
+    const intensity = Math.sqrt(state.accel.x ** 2 + state.accel.y ** 2) / maxAccel;
+    document.querySelectorAll('.pill-bar-fill').forEach(bar => {
+        if (intensity > 0.6) bar.style.background = 'var(--danger)';
+        else if (intensity > 0.3) bar.style.background = 'var(--warning)';
+        else bar.style.background = 'var(--primary)';
+    });
+}
+
+// === MOTION CANVAS ===
+function drawMotionCanvas() {
+    const w = motionCanvas.width;
+    const h = motionCanvas.height;
+
+    // Add to history
+    state.history.push({
+        raw: { x: state.accel.x, y: state.accel.y },
+        filtered: { x: state.filtered.x, y: state.filtered.y }
+    });
+
+    if (state.history.length > state.maxHistory) {
+        state.history.shift();
+    }
+
+    // Clear
+    ctx.fillStyle = 'rgba(10, 14, 23, 0.3)';
+    ctx.fillRect(0, 0, w, h);
+
+    // Draw grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(w / 2, 0); ctx.lineTo(w / 2, h);
+    ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
+    ctx.stroke();
+
+    // Draw crosshair circle
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, 20, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.stroke();
+
+    const scale = 4;
+
+    // Draw raw motion trail
+    if (state.history.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 23, 68, 0.5)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < state.history.length; i++) {
+            const p = state.history[i].raw;
+            const px = w / 2 + p.x * scale;
+            const py = h / 2 + p.y * scale;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+    }
+
+    // Draw filtered motion trail
+    if (state.history.length > 1 && state.stabilizationOn) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.8)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < state.history.length; i++) {
+            const p = state.history[i].filtered;
+            const px = w / 2 + p.x * scale;
+            const py = h / 2 + p.y * scale;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+    }
+
+    // Draw current raw point
+    const rawX = w / 2 + state.accel.x * scale;
+    const rawY = h / 2 + state.accel.y * scale;
+    ctx.beginPath();
+    ctx.arc(rawX, rawY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff1744';
+    ctx.fill();
+
+    // Draw current filtered point
+    if (state.stabilizationOn) {
+        const filtX = w / 2 + state.filtered.x * scale;
+        const filtY = h / 2 + state.filtered.y * scale;
+        ctx.beginPath();
+        ctx.arc(filtX, filtY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#00e5ff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(filtX, filtY, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+}
+
+// === HORIZON ===
+function updateHorizon() {
+    const gamma = state.orientation.gamma;
+    const deg = clamp(gamma, -45, 45);
+    const pct = ((deg + 45) / 90) * 100;
+
+    $('horizonFill').style.height = pct + '%';
+    $('horizonFill').style.bottom = '0';
+    $('horizonDeg').textContent = deg.toFixed(0) + '°';
+
+    if (Math.abs(deg) < 2) {
+        $('horizonFill').style.background = 'var(--success)';
+    } else if (Math.abs(deg) < 15) {
+        $('horizonFill').style.background = 'var(--primary)';
+    } else {
+        $('horizonFill').style.background = 'var(--warning)';
+    }
+}
+
+// === STATUS BADGE ===
+function updateStatusBadge() {
+    const badge = $('statusBadge');
+    const text = $('statusText');
+
+    if (state.stabilizationOn) {
+        badge.className = 'status-badge active';
+        text.textContent = 'STABILIZED';
+    } else {
+        badge.className = 'status-badge inactive';
+        text.textContent = 'OFF';
+    }
+}
+
+// === TOGGLE STABILIZATION ===
+function toggleStabilization() {
+    state.stabilizationOn = !state.stabilizationOn;
+
+    const btn = $('stabBtn');
+    const btnText = $('stabBtnText');
+
+    if (state.stabilizationOn) {
+        btn.classList.add('active');
+        btnText.textContent = 'Active';
+        showToast('Stabilization ON', 'success');
+
+        // Reset Kalman filters for fresh start
+        state.kalman.x = createKalmanFilter();
+        state.kalman.y = createKalmanFilter();
+        state.kalman.z = createKalmanFilter();
+        state.kalman.beta = createKalmanFilter();
+        state.kalman.gamma = createKalmanFilter();
+
+        // Pre-seed with current values
+        state.filtered.x = state.accel.x;
+        state.filtered.y = state.accel.y;
+        state.filtered.beta = state.orientation.beta;
+        state.filtered.gamma = state.orientation.gamma;
+
+    } else {
+        btn.classList.remove('active');
+        btnText.textContent = 'Stabilize';
+        showToast('Stabilization OFF', 'info');
+    }
+}
+
+// === SETTINGS ===
+function toggleSettings() {
+    const overlay = $('settingsOverlay');
+    overlay.classList.toggle('open');
+}
+
+function closeSettingsOutside(e) {
+    if (e.target === $('settingsOverlay')) {
+        toggleSettings();
+    }
+}
+
+function updateSetting(key, value) {
+    state.settings[key] = value;
+
+    // Apply immediate effects
+    switch (key) {
+        case 'showGrid':
+            $('gridOverlay').classList.toggle('show', value);
+            break;
+        case 'showCrosshair':
+            $('crosshair').style.display = value ? '' : 'none';
+            break;
+        case 'showHorizon':
+            $('horizonIndicator').style.display = value ? '' : 'none';
+            break;
+        case 'showText':
+            $('textLayer').style.display = value ? '' : 'none';
+            break;
+        case 'showData':
+            $('motionViz').style.display = value ? '' : 'none';
+            break;
+        case 'mainText':
+            $('mainText').textContent = value || 'STABILIZED TEXT';
+            break;
+        case 'subText':
+            $('subText').textContent = value || '';
+            break;
+        case 'resolution':
+            if (state.cameraActive) {
+                startCamera();
+            }
+            break;
+        case 'algorithm':
+            // Reset filters on algorithm change
+            state.kalman = {
+                x: createKalmanFilter(),
+                y: createKalmanFilter(),
+                z: createKalmanFilter(),
+                beta: createKalmanFilter(),
+                gamma: createKalmanFilter()
+            };
+            break;
+    }
+}
+
+// Strength slider
+$('stabStrength').addEventListener('input', function () {
+    state.settings.strength = parseInt(this.value);
+    $('stabValue').textContent = this.value + '%';
+});
+
+// === TOAST ===
+let toastTimer = null;
+function showToast(msg, type = 'info') {
+    const toast = $('toast');
+    toast.textContent = msg;
+    toast.className = 'toast ' + type + ' show';
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+    }, 2500);
+}
+
+// === KEYBOARD SHORTCUT (Desktop) ===
+document.addEventListener('keydown', e => {
+    if (e.key === 's' || e.key === 'S') toggleStabilization();
+    if (e.key === 'g' || e.key === 'G') {
+        const cb = $('setGrid');
+        cb.checked = !cb.checked;
+        updateSetting('showGrid', cb.checked);
+    }
+    if (e.key === 'c' || e.key === 'C') switchCamera();
+});
+
+// === PREVENT ZOOM ON DOUBLE TAP ===
+let lastTap = 0;
+document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+        e.preventDefault();
+    }
+    lastTap = now;
+}, { passive: false });
+
+// === HANDLE RESIZE ===
+window.addEventListener('resize', () => {
+    // Canvas stays responsive via CSS
+});
+
+// === SERVICE WORKER FOR OFFLINE (Optional) ===
+// Uncomment below if you want offline support
+/*
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+*/
+
+</script>
+</body>
+</html>
